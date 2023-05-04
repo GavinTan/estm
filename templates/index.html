@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+  <link rel="icon" href="/static/favicon.ico">
+  <title>ES监控</title>
+  <style>
+    .aside-container:not(.el-menu--collapse) {
+      position: fixed;
+      width: 210px;
+      height: 100%;
+      z-index: 1001;
+    }
+
+    .main-container {
+      min-height: 100%;
+      margin-left: 210px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .right-menu {
+      position: fixed;
+      z-index: 999;
+      display: none;
+      border: 1px solid #eee;
+      box-shadow: 0 0.5em 1em 0 rgba(0, 0, 0, .1);
+      border-radius: 1px;
+    }
+
+    .right-menu .el-menu-vertical:not(.el-menu--collapse) {
+      width: 140px;
+      min-height: 90px;
+    }
+
+    .right-menu .el-menu .el-menu-item {
+      height: 45px;
+      line-height: 45px;
+      width: auto;
+    }
+
+    .right-menu .el-divider--horizontal {
+      margin: 1px 0;
+      background: 0 0;
+      border-top: 1px solid #e8eaec;
+    }
+
+    .clearfix:before,
+    .clearfix:after {
+      display: table;
+      content: "";
+    }
+
+    .clearfix:after {
+      clear: both;
+    }
+
+    .tree-node {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 14px;
+      padding-right: 8px;
+    }
+
+    .filter-container .el-input {
+      width: 200px;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <el-menu default-active="/" class="aside-container" :default-active="$route.path" :collapse="isCollapse" router>
+      <el-menu-item index="/service">
+        <span slot="title">服务管理</span>
+      </el-menu-item>
+
+      <el-submenu index="estask">
+        <template slot="title">任务监控</template>
+        <el-menu-item index="/estask/real">
+          <i class="el-icon-time"></i>
+          <span slot="title">实时</span>
+        </el-menu-item>
+        <el-menu-item index="/estask/history">
+          <i class="el-icon-tickets"></i>
+          <span slot="title">历史</span>
+        </el-menu-item>
+      </el-submenu>
+    </el-menu>
+    <div class="main-container">
+      <router-view></router-view>
+    </div>
+  </div>
+
+  {{template "service"}}
+
+  <template id="real">
+    <div style="margin-left: 30px;">
+      <el-dialog title="DSL" :visible.sync="dslVisible">
+        {% dsl %}
+      </el-dialog>
+
+      <div class="filter-container">
+        <el-input v-model="search" placeholder="搜索"></el-input>
+        <el-select v-model="searchCluster" placeholder="选择集群" @change="fetchData">
+          <el-option v-for="i in clusterOptions" :key="i.value" :label="i.label" :value="i.value">
+          </el-option>
+        </el-select>
+
+        <el-button type="primary" style="float: right;" @click="fetchData" icon="el-icon-refresh-right" circle>
+        </el-button>
+      </div>
+
+      <el-table :data="tables" style="width: 100%">
+        <el-table-column prop="index" label="索引">
+        </el-table-column>
+        <el-table-column prop="id" label="ID">
+        </el-table-column>
+        <el-table-column prop="type" label="类型">
+        </el-table-column>
+        <el-table-column prop="action" label="动作">
+        </el-table-column>
+        <el-table-column prop="node" label="节点">
+        </el-table-column>
+        <el-table-column prop="dsl" label="dsl">
+          <template slot-scope="scope">
+            <el-button type="text" @click="showDialog(scope.row.dsl)">显示</el-button>
+          </template>
+        </el-table-column>
+        </el-table-column>
+        <el-table-column prop="start_time" label="开始时间" width="160">
+        </el-table-column>
+        <el-table-column prop="running_time" label="执行时长(秒)" sortable>
+        </el-table-column>
+        <el-table-column label="操作">
+          <template slot-scope="scope">
+            <el-button v-if="scope.row.cancellable" type="text" @click="cancelTask(scope.row)">取消</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+  </template>
+
+  <template id="history">
+    <div style="margin-left: 30px;">
+      <el-dialog title="DSL" :visible.sync="dslVisible">
+        {% dsl %}
+      </el-dialog>
+
+      <div class="filter-container">
+        <el-input v-model="search" placeholder="搜索（索引、ID）" @change="handleFilterData" clearable></el-input>
+        <el-input v-model="searchNode" placeholder="搜索（节点）" @change="handleFilterData" clearable></el-input>
+        <el-select v-model="searchCluster" placeholder="选择集群" @change="handleFilterData" clearable>
+          <el-option v-for="i in clusterOptions" :key="i.value" :label="i.label" :value="i.value">
+          </el-option>
+        </el-select>
+
+        <el-date-picker v-model="qd" type="date" placeholder="选择日期" :picker-options="pickerOptions"
+          value-format="yyyy-MM-dd" @change="handleQuerydate">
+        </el-date-picker>
+        <el-time-picker is-range v-model="qt" range-separator="至" start-placeholder="开始时间" end-placeholder="结束时间"
+          placeholder="选择时间范围" @change="handleQuerydate" value-format="timestamp">
+        </el-time-picker>
+
+        <el-button style="float: right;" type="primary" @click="fetchData" icon="el-icon-refresh-right" circle>
+        </el-button>
+      </div>
+
+      <el-table :data="tableData" style="width: 100%" @sort-change="handleSort">
+        <el-table-column prop="_source.index" label="索引">
+        </el-table-column>
+        <el-table-column prop="_id" label="ID">
+        </el-table-column>
+        <el-table-column prop="_source.type" label="类型">
+        </el-table-column>
+        <el-table-column prop="_source.action" label="动作">
+        </el-table-column>
+        <el-table-column prop="_source.node" label="节点">
+        </el-table-column>
+        <el-table-column prop="_source.cluster" label="集群">
+        </el-table-column>
+        <el-table-column label="dsl">
+          <template slot-scope="scope">
+            <el-button type="text" @click="showDialog(scope.row._source.description)">显示</el-button>
+          </template>
+        </el-table-column>
+        </el-table-column>
+        <el-table-column prop="_source.start_time_in_millis" label="开始时间" sortable="custom" width="160">
+          <template slot-scope="scope">
+            {% moment(scope.row._source.start_time_in_millis).format("YYYY-MM-DD HH:mm:ss") %}
+          </template>
+        </el-table-column>
+        <el-table-column prop="_source.running_time_in_nanos" label="执行时长(秒)" sortable="custom">
+          <template slot-scope="scope">
+            {% scope.row._source.running_time_in_nanos / 1e9 %}
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-pagination style="margin-top: 50px;" @size-change="handleSizeChange" @current-change="handleCurrentChange"
+        :current-page="tableCurrentPage" :page-sizes="[10, 100, 150, 200]" :page-size="tablePageSize"
+        layout="total, sizes, prev, pager, next, jumper" :total="tableTotal">
+      </el-pagination>
+
+      <el-backtop></el-backtop>
+    </div>
+  </template>
+</body>
+<script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+<script src="https://unpkg.com/element-ui/lib/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/axios@1.1.2/dist/axios.min.js"></script>
+<script src="https://unpkg.com/vue-router@3"></script>
+<script src="https://unpkg.com/http-vue-loader"></script>
+<script src="/static/moment.min.js"></script>
+<script src="/static/index.js"></script>
+
+
+
+</html>
