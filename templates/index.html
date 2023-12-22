@@ -65,12 +65,25 @@
       align-items: center;
       justify-content: space-between;
       font-size: 14px;
-      padding-right: 8px;
+    }
+
+    .filter-container {
+      margin-right: 80px;
     }
 
     .filter-container .el-input {
       width: 200px;
       margin-bottom: 10px;
+    }
+
+    .refresh-button {
+      position: absolute;
+      right: 10px;
+      top: 0;
+    }
+
+    .el-tree .el-loading-mask {
+      top: 70px !important;
     }
   </style>
 </head>
@@ -114,11 +127,11 @@
           </el-option>
         </el-select>
 
-        <el-button type="primary" style="float: right;" @click="fetchData" icon="el-icon-refresh-right" circle>
+        <el-button type="primary" class="refresh-button" @mousedown.native="refreshOnDown" @mouseup.native="refreshOnUp" icon="el-icon-refresh-right" @blur.prevent circle>
         </el-button>
       </div>
 
-      <el-table :data="tables" style="width: 100%">
+      <el-table :data="tables" style="width: 100%" v-loading="loading" element-loading-text="加载中">
         <el-table-column prop="index" label="索引">
         </el-table-column>
         <el-table-column prop="id" label="ID">
@@ -133,7 +146,6 @@
           <template slot-scope="scope">
             <el-button type="text" @click="showDialog(scope.row.dsl)">显示</el-button>
           </template>
-        </el-table-column>
         </el-table-column>
         <el-table-column prop="start_time" label="开始时间" width="160">
         </el-table-column>
@@ -168,12 +180,14 @@
         <el-time-picker is-range v-model="qt" range-separator="至" start-placeholder="开始时间" end-placeholder="结束时间"
           placeholder="选择时间范围" @change="handleQuerydate" value-format="timestamp">
         </el-time-picker>
-
-        <el-button style="float: right;" type="primary" @click="fetchData" icon="el-icon-refresh-right" circle>
-        </el-button>
       </div>
 
-      <el-table :data="tableData" style="width: 100%" @sort-change="handleSort">
+      <el-button class="refresh-button" type="primary" @click="handleRefresh"
+        icon="el-icon-refresh-right" circle>
+      </el-button>
+
+      <el-table :data="tableData" style="width: 100%" @sort-change="handleSort" v-loading="loading"
+        element-loading-text="加载中">
         <el-table-column prop="_source.index" label="索引">
         </el-table-column>
         <el-table-column prop="_id" label="ID">

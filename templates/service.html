@@ -23,7 +23,8 @@
             </div>
         </el-dialog>
 
-        <el-dialog :title="editNode ? '编辑' : '添加'" :visible.sync="addGroupVisible" width="360px" :close-on-click-modal="false">
+        <el-dialog :title="editNode ? '编辑' : '添加'" :visible.sync="addGroupVisible" width="360px"
+            :close-on-click-modal="false">
             <el-form :model="gform" ref="gform" label-position="left" label-width="100px" :rules="gformRules"
                 :show-message="false">
                 <el-form-item label="名称" prop="name">
@@ -89,11 +90,12 @@
         </div>
 
         <el-row :gutter="20">
-            <el-col :xs="24" :sm="24" :md="9" :lg="6" :xl="5">
+            <el-col :xs="24" :sm="24" :md="9" :lg="7" :xl="6">
                 <el-input v-model="filterText" placeholder="搜索" size="mini" prefix-icon="el-icon-search"></el-input>
                 <el-tree ref="tree" :filter-node-method="filterNode" :expand-on-click-node="false" :data="treeData"
                     :props="defaultProps" @node-click="handleNodeClick" @node-contextmenu="handleRightClick"
-                    node-key="tid" :default-expanded-keys="expands" expand-on-click-node highlight-current accordion>
+                    node-key="tid" :default-expanded-keys="expands" expand-on-click-node highlight-current accordion
+                    v-loading="loading" element-loading-spinner="el-icon-loading" element-loading-text="加载中">
                     <span class="tree-node" slot-scope="{node, data}">
                         <span>
                             <i v-if="data.type === 'cluster'" class="el-icon-refrigerator"></i>
@@ -103,7 +105,8 @@
                         </span>
 
                         <span>
-                            <el-link type="primary" v-if="data.type === 'cluster' && data.kibana" :href="data.kibana" target="_blank">
+                            <el-link type="primary" v-if="data.type === 'cluster' && data.kibana" :href="data.kibana"
+                                target="_blank">
                                 Kibana
                             </el-link>
                         </span>
@@ -111,7 +114,7 @@
                 </el-tree>
             </el-col>
 
-            <el-col :xs="24" :sm="24" :md="15" :lg="18" :xl="19">
+            <el-col :xs="24" :sm="24" :md="15" :lg="17" :xl="18">
                 <el-card class="box-card">
                     <div slot="header" class="clearfix">
                         <el-input v-model="search" style="width: 200px;float: right;" class="filter-item"
@@ -134,7 +137,7 @@
                         </el-table-column>
                         <el-table-column prop="remark" label="备注">
                         </el-table-column>
-                        <el-table-column label="操作">
+                        <el-table-column label="操作" width="150">
                             <template slot-scope="scope">
                                 <el-button v-if="scope.row.status === 1" type="text"
                                     @click="handleService('stop', scope.row)">停止

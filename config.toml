@@ -1,4 +1,4 @@
 index_name = "estasklog"
 task_actions = "*search,*scroll"
 monitor_envs = ["prod"]
-write_data_es = ["http://10.100.1.71:9210", "http://10.100.1.72:9210", "http://10.100.1.73:9210", "http://10.100.1.74:9210"]
+write_data_es = ["http://192.168.32.14:9200", "http://192.168.32.15:9200", "http://192.168.32.16:9200"]

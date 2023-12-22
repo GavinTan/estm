@@ -15,15 +15,15 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esutil"
 	"github.com/gin-gonic/gin"
-	"github.com/robfig/cron/v3"
+	"github.com/robfig/cron"
 )
 
 //go:embed templates
@@ -36,12 +36,12 @@ var (
 		Timeout: 10 * time.Second,
 	}
 
+	logger = log.Default()
+
 	indexName      string
 	taskActions    string
 	monitorEnvList []string
 	writeDataEs    []string
-
-	lb *LoadBalancer
 )
 
 type Config struct {
@@ -112,25 +112,6 @@ type serviceData struct {
 type servceObj struct {
 	es        *elasticsearch.Client
 	indexName string
-}
-
-type LoadBalancer struct {
-	servers     []string
-	index       int32
-	serverCount int32
-}
-
-func NewLoadBalancer(servers []string) *LoadBalancer {
-	return &LoadBalancer{
-		servers:     servers,
-		index:       0,
-		serverCount: int32(len(servers)),
-	}
-}
-
-func (lb *LoadBalancer) nextServer() string {
-	index := atomic.AddInt32(&lb.index, 1) % lb.serverCount
-	return lb.servers[index]
 }
 
 func getHistoryData(args map[string]string) interface{} {
@@ -238,8 +219,7 @@ func getHistoryData(args map[string]string) interface{} {
 }
 
 func getRealData(services []string) interface{} {
-	lb := NewLoadBalancer(services)
-	resp, err := client.Get(fmt.Sprintf("%s/_tasks?actions=*search&detailed", lb.nextServer()))
+	resp, err := client.Get(fmt.Sprintf("%s/_tasks?actions=*search&detailed", getServer(services)))
 	if err != nil {
 		fmt.Println(err)
 		return []retTaskData{}
@@ -286,8 +266,8 @@ func getRealData(services []string) interface{} {
 	return tmpData
 }
 
-func cancelTask(tid string) bool {
-	resp, err := client.PostForm(fmt.Sprintf("%s/_tasks/%s/_cancel", lb.nextServer(), tid), url.Values{})
+func cancelTask(tid string, servers []string) bool {
+	resp, err := client.PostForm(fmt.Sprintf("%s/_tasks/%s/_cancel", getServer(servers), tid), url.Values{})
 	if err != nil {
 		fmt.Println(err)
 		return false
@@ -408,7 +388,7 @@ func writeTaskData(cluster string, data map[string]map[string]nodeData) {
 	})
 
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 		return
 	}
 
@@ -429,15 +409,16 @@ func writeTaskData(cluster string, data map[string]map[string]nodeData) {
 				// res, err := es.Index(indexName, esutil.NewJSONReader(vv))
 
 				if err != nil {
-					log.Println(err)
+					logger.Println(err)
 					return
 				}
 
 				defer res.Body.Close()
-				io.Copy(io.Discard, res.Body)
+				// io.Copy(io.Discard, res.Body)
 
 				if res.IsError() {
-					log.Println("write index failed!")
+					body, _ := io.ReadAll(res.Body)
+					logger.Printf("write index failed! %s\n", string(body))
 				}
 			}
 
@@ -448,7 +429,7 @@ func writeTaskData(cluster string, data map[string]map[string]nodeData) {
 func getTaskLog(cluster, server string) {
 	resp, err := client.Get(fmt.Sprintf("%s/_tasks?actions=%s&detailed", server, taskActions))
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 		return
 	}
 
@@ -460,6 +441,65 @@ func getTaskLog(cluster, server string) {
 	json.Unmarshal(body, &data)
 
 	writeTaskData(cluster, data)
+}
+
+func retryFailedShard(server string) {
+	var clusterState struct {
+		ClusterName      string `json:"cluster_name"`
+		NumberOfNodes    int    `json:"number_of_nodes"`
+		Status           string `json:"status"`
+		UnassignedShards int    `json:"unassigned_shards"`
+	}
+
+	resp, err := client.Get(fmt.Sprintf("%s/_cluster/health", server))
+	if err != nil {
+		logger.Println(err)
+		return
+	}
+
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	json.Unmarshal(body, &clusterState)
+
+	if clusterState.Status == "red" {
+		logger.Println(server, clusterState.Status)
+		go func() {
+			resp, err := client.PostForm(fmt.Sprintf("%s/_cluster/reroute?retry_failed=true", server), nil)
+			if err != nil {
+				logger.Println(err)
+				return
+			}
+
+			defer resp.Body.Close()
+
+			io.Copy(io.Discard, resp.Body)
+		}()
+	}
+}
+
+func runRetryFailedShard() {
+	for _, service := range Service().All().([]interface{}) {
+		d, _ := json.Marshal(service.(map[string]interface{})["_source"])
+		var s serviceData
+		json.Unmarshal(d, &s)
+
+		for _, v := range monitorEnvList {
+			if s.Name == v {
+				for _, cluster := range s.Children {
+					var serverList []string
+					for _, node := range cluster.Data {
+						serverList = append(serverList, fmt.Sprintf("http://%s:%s", node.Host, node.Port))
+					}
+
+					if len(serverList) > 0 {
+						go retryFailedShard(getServer(serverList))
+					}
+				}
+			}
+		}
+	}
 }
 
 func runGetTaskLog() {
@@ -476,12 +516,27 @@ func runGetTaskLog() {
 						serverList = append(serverList, fmt.Sprintf("http://%s:%s", node.Host, node.Port))
 					}
 
-					lb := NewLoadBalancer(serverList)
-					go getTaskLog(cluster.Name, lb.nextServer())
+					if len(serverList) > 0 {
+						go getTaskLog(cluster.Name, getServer(serverList))
+					}
 				}
 			}
 		}
 	}
+}
+
+func getServer(servers []string) (server string) {
+	for _, s := range servers {
+		u, _ := url.Parse(s)
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(u.Hostname(), u.Port()), time.Second*3)
+		if err == nil {
+			server = s
+			conn.Close()
+			break
+		}
+	}
+
+	return
 }
 
 func initConfig() {
@@ -491,10 +546,10 @@ func initConfig() {
 			TaskActions: "*search,*scroll",
 			MonitorEnvs: []string{"prod"},
 			WriteDataEs: []string{
-				"http://10.100.1.71:9210",
-				"http://10.100.1.72:9210",
-				"http://10.100.1.73:9210",
-				"http://10.100.1.74:9210",
+				"http://192.168.10.1:9210",
+				"http://192.168.10.2:9210",
+				"http://192.168.10.3:9210",
+				"http://192.168.10.4:9210",
 			},
 		}
 
@@ -523,18 +578,24 @@ func initConfig() {
 }
 
 func init() {
-	log.SetPrefix("[ESTM] ")
-	log.SetFlags(log.Lshortfile | log.LstdFlags)
+	if strings.Contains(os.Args[0], "go-build") {
+		gin.SetMode(gin.DebugMode)
+	} else {
+		logFile, _ := os.OpenFile("estm.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, 0644)
+		logger = log.New(logFile, "[ESTM] ", log.Lshortfile|log.LstdFlags)
+		gin.DefaultWriter = io.MultiWriter(logFile)
+		gin.SetMode(gin.ReleaseMode)
+	}
 
 	initConfig()
 
 	c := cron.New()
 	c.AddFunc("@every 500ms", runGetTaskLog)
+	c.AddFunc("@every 1h", runRetryFailedShard)
 	c.Start()
 }
 
 func main() {
-	lb = NewLoadBalancer(writeDataEs)
 	r := gin.Default()
 
 	templ := template.Must(template.New("").ParseFS(FS, "templates/*.html"))
@@ -567,7 +628,7 @@ func main() {
 
 		err := Service().Create(d)
 		if err != nil {
-			log.Println(err)
+			logger.Println(err)
 			c.JSON(http.StatusInternalServerError, gin.H{"message": "添加失败"})
 		} else {
 			c.JSON(http.StatusOK, gin.H{"message": "添加成功"})
@@ -581,7 +642,7 @@ func main() {
 		id := c.Param("id")
 		err := Service().Update(id, d)
 		if err != nil {
-			log.Println(err)
+			logger.Println(err)
 			c.JSON(http.StatusInternalServerError, gin.H{"message": "添加失败"})
 		} else {
 			c.JSON(http.StatusOK, gin.H{"message": "添加成功"})
@@ -592,7 +653,7 @@ func main() {
 		id := c.Param("id")
 		err := Service().Delete(id)
 		if err != nil {
-			log.Println(err)
+			logger.Println(err)
 			c.JSON(http.StatusInternalServerError, gin.H{"message": "删除失败"})
 		} else {
 			c.JSON(http.StatusOK, gin.H{"message": "删除成功"})
@@ -638,13 +699,25 @@ func main() {
 	})
 
 	r.POST("/cancelTask", func(c *gin.Context) {
+		var servers []string
 		tid := c.PostForm("tid")
+		s := c.Query("s")
 
-		if cancelTask(tid) {
+		if s != "" {
+			servers = strings.Split(s, ",")
+		}
+
+		if cancelTask(tid, servers) {
 			c.JSON(http.StatusOK, gin.H{})
 		} else {
 			c.JSON(http.StatusInternalServerError, gin.H{})
 		}
+	})
+
+	r.GET("/status", func(c *gin.Context) {
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		c.JSON(http.StatusOK, gin.H{"threading": runtime.NumGoroutine(), "memory": m.Alloc})
 	})
 
 	r.Run(":8088")
