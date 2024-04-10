@@ -1,0 +1,81 @@
+{{define "history"}}
+<template id="history">
+  <el-container>
+    <el-dialog title="DSL" v-model="dslVisible">
+      {% dsl %}
+    </el-dialog>
+
+    <el-header height="auto" style="position: relative;padding: 0;">
+      <el-form :inline="true" size="large">
+        <el-form-item>
+          <el-input v-model="search" placeholder="搜索（索引、ID）" @change="handleFilterData" clearable></el-input>
+        </el-form-item>
+        <el-form-item>
+          <el-input v-model="searchNode" placeholder="搜索（节点）" @change="handleFilterData" clearable></el-input>
+        </el-form-item>
+        <el-form-item style="width: 200px">
+          <el-select v-model="searchCluster" placeholder="选择集群" @change="handleFilterData" clearable>
+            <el-option v-for="i in clusterOptions" :key="i.value" :label="i.label" :value="i.value">
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item style="width: 200px">
+          <el-date-picker v-model="qd" type="date" placeholder="选择日期" :picker-options="pickerOptions"
+            value-format="YYYY-MM-DD" @change="handleQuerydate">
+        </el-date-picker>
+        </el-form-item>
+        <el-form-item>
+          <el-time-picker is-range v-model="qt" range-separator="至" start-placeholder="开始时间" end-placeholder="结束时间"
+            placeholder="选择时间范围" @change="handleQuerydate" value-format="x">
+          </el-time-picker>
+        </el-form-item>
+      </el-form>
+
+      <el-button class="refresh-button" type="primary" @click="handleRefresh" circle>
+        <el-icon :size="20"><Refresh /></el-icon>
+      </el-button>
+    </el-header>
+
+    <el-main style="overflow: hidden;padding: 0;">
+      <el-table :data="tableData" height="100%" @sort-change="handleSort" v-loading="loading"
+        element-loading-text="加载中">
+        <el-table-column prop="_source.index" label="索引">
+        </el-table-column>
+        <el-table-column prop="_id" label="ID">
+        </el-table-column>
+        <el-table-column prop="_source.type" label="类型">
+        </el-table-column>
+        <el-table-column prop="_source.action" label="动作">
+        </el-table-column>
+        <el-table-column prop="_source.node" label="节点">
+        </el-table-column>
+        <el-table-column prop="_source.cluster" label="集群">
+        </el-table-column>
+        <el-table-column label="dsl">
+          <template #default="scope">
+            <el-button type="text" @click="showDialog(scope.row._source.description)">显示</el-button>
+          </template>
+        </el-table-column>
+        </el-table-column>
+        <el-table-column prop="_source.start_time_in_millis" label="开始时间" sortable="custom" width="160">
+          <template #default="scope">
+            {% dayjs(scope.row._source.start_time_in_millis).format("YYYY-MM-DD HH:mm:ss") %}
+          </template>
+        </el-table-column>
+        <el-table-column prop="_source.running_time_in_nanos" label="执行时长(秒)" sortable="custom">
+          <template #default="scope">
+            {% scope.row._source.running_time_in_nanos / 1e9 %}
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-main>
+
+    <el-footer height="auto" style="padding: 20px 0 0;margin-bottom: -10px;">
+      <el-pagination @size-change="handleSizeChange" @current-change="handleCurrentChange"
+        :current-page="tableCurrentPage" :page-sizes="[10, 100, 150, 200]" :page-size="tablePageSize"
+        layout="total, sizes, prev, pager, next, jumper" :total="tableTotal">
+      </el-pagination>
+    </el-footer>
+  </el-container>
+</template>
+{{end}}

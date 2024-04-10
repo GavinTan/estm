@@ -1,13 +1,28 @@
+const { reactive, ref } = Vue;
+const { ElMessage } = ElementPlus;
+
 const serviceView = {
   template: "#service",
   delimiters: ["{%", "%}"],
   data() {
+    const setupVisible = ref(false);
+    const tableData = reactive({
+      cid: "",
+      data: [],
+    });
+    const treeData = reactive([
+      {
+        tid: "0",
+        name: "ES集群",
+        type: "base",
+        number: "",
+        children: [],
+      },
+    ]);
+
     return {
       search: "",
-      tableData: {
-        cid: "",
-        data: [],
-      },
+      tableData,
       sform: {
         host: "",
         systemd: "",
@@ -26,21 +41,15 @@ const serviceView = {
       gformRules: {
         name: [{ required: true, message: "", trigger: "blur" }],
       },
-      treeData: [
-        {
-          tid: "0",
-          name: "ES集群",
-          type: "base",
-          number: "",
-          children: [],
-        },
-      ],
+      treeData,
       srvData: [],
       expands: ["0"],
       defaultProps: {
         children: "children",
         label: "name",
       },
+      esClusterData: {},
+      selectEsCluster: "",
       filterText: "",
       leftClickTreeNode: {},
       contextMenuVisible: false,
@@ -51,6 +60,7 @@ const serviceView = {
       editService: false,
       editNode: false,
       loading: false,
+      setupVisible,
     };
   },
   computed: {
@@ -74,9 +84,9 @@ const serviceView = {
   created() {
     this.fetchTreeData();
 
-    // this.timer = setInterval(() => {
-    //     this.checkEsService()
-    // }, 1000 * 30)
+    this.timer = setInterval(() => {
+      this.checkEsService();
+    }, 1000 * 30);
   },
   methods: {
     fetchTreeData() {
@@ -93,14 +103,18 @@ const serviceView = {
               type: "group",
               number: g?._source?.children?.length,
               children:
-                g?._source?.children?.map((c, sindex) => ({
-                  name: c.name,
-                  id: g._id,
-                  cid: c.cid,
-                  tid: `0-${gindex}-${sindex}`,
-                  type: "cluster",
-                  kibana: c.kibana,
-                })) || [],
+                g?._source?.children?.map((c, sindex) => {
+                  this.esClusterData[c.name] = c.data;
+
+                  return {
+                    name: c.name,
+                    id: g._id,
+                    cid: c.cid,
+                    tid: `0-${gindex}-${sindex}`,
+                    type: "cluster",
+                    kibana: c.kibana,
+                  };
+                }) || [],
             });
           });
           this.treeData[0].children = data;
@@ -114,14 +128,11 @@ const serviceView = {
         .then((res) => {
           res.data?.children.forEach((i) => {
             if (i.cid === cid) {
-              this.$set(
-                this.tableData,
-                "data",
+              this.tableData.data =
                 i?.data?.map((ii, index) =>
                   Object.assign(ii, { id: index + 1 })
-                ) || []
-              );
-              this.$set(this.tableData, "cid", i.cid);
+                ) || [];
+              this.tableData.cid = i.cid;
             }
           });
 
@@ -131,7 +142,9 @@ const serviceView = {
             this.checkEsService();
           });
         })
-        .catch(() => this.$message.error("请求出错！"));
+        .catch((err) => {
+          this.$message.error("请求出错！");
+        });
     },
     async checkEsService() {
       const cid = this.tableData.cid;
@@ -141,14 +154,14 @@ const serviceView = {
           .post("/checkEsService", { host: item.host, port: item.port })
           .then((res) => {
             if (this.clickNode.cid === cid) {
-              this.$set(this.tableData.data, i, {
+              this.tableData.data[i] = {
                 ...item,
                 status: res.data.status,
-              });
+              };
             }
           })
           .catch(() => {
-            this.$set(this.tableData.data, i, { ...item, status: -1 });
+            this.tableData.data[i] = { ...item, status: -1 };
           });
       }
     },
@@ -387,11 +400,35 @@ const serviceView = {
       axios
         .post(`/action?a=${a}`, data)
         .then((res) => {
-          this.checkEsService();
+          this.$message.success("操作成功");
+
+          setTimeout(() => {
+            this.checkEsService();
+          }, 2000);
         })
         .catch((error) => {
           this.$message.error(error.response.data?.message || error);
         });
+    },
+    handleRetryShard() {
+      axios
+        .post("/retryShard", this.esClusterData[this.selectEsCluster] || [])
+        .then(() =>
+          ElMessage({
+            showClose: true,
+            message: "执行成功",
+            type: "success",
+          })
+        )
+        .catch(
+          err >
+            ElMessage({
+              duration: 5000,
+              showClose: true,
+              message: err,
+              type: "error",
+            })
+        );
     },
   },
   beforeDestroy() {
@@ -506,11 +543,8 @@ const historyView = {
       searchNode: "",
       searchCluster: "",
       clusterOptions: [],
-      qd: moment().format("YYYY-MM-DD"),
-      qt: [
-        moment(moment().startOf("day")).valueOf(),
-        moment(moment().endOf("day")).valueOf(),
-      ],
+      qd: dayjs().format("YYYY-MM-DD"),
+      qt: [dayjs().startOf("day").valueOf(), dayjs().endOf("day").valueOf()],
       dsl: "",
       dslVisible: false,
       tableData: [],
@@ -542,26 +576,25 @@ const historyView = {
     });
   },
   methods: {
-    moment,
     fetchData() {
       let qt;
       if (this.qt === null) {
         qt = [];
       } else {
         qt = [
-          moment(this.qt[0])
+          dayjs(this.qt[0])
             .add(
-              moment(this.qd).diff(
-                moment(moment(this.qt[0]).format("YYYY-MM-DD")),
+              dayjs(this.qd).diff(
+                dayjs(dayjs(this.qt[0]).format("YYYY-MM-DD")),
                 "day"
               ),
               "day"
             )
             .valueOf(),
-          moment(this.qt[1])
+          dayjs(this.qt[1])
             .add(
-              moment(this.qd).diff(
-                moment(moment(this.qt[1]).format("YYYY-MM-DD")),
+              dayjs(this.qd).diff(
+                dayjs(dayjs(this.qt[1]).format("YYYY-MM-DD")),
                 "day"
               ),
               "day"
@@ -640,17 +673,38 @@ const routes = [
   { path: "/estask/real", component: realView },
   { path: "/estask/history", component: historyView },
   { path: "/service", component: serviceView },
-  { path: "*", redirect: "/service" },
+  { path: "/:pathMatch(.*)*", redirect: "/service" },
 ];
 
-const router = new VueRouter({
+const router = VueRouter.createRouter({
+  history: VueRouter.createWebHashHistory(),
   routes,
 });
 
-const app = new Vue({
-  router,
+const App = {
   delimiters: ["{%", "%}"],
-  data: {
-    isCollapse: false,
+  data() {
+    const isCollapse = ref(window.screen.width < 768);
+    window.addEventListener("resize", () => {
+      isCollapse.value = window.screen.width < 768;
+    });
+
+    return {
+      isCollapse,
+    };
   },
-}).$mount("#app");
+};
+
+const app = Vue.createApp(App);
+
+for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+  app.component(key, component);
+}
+
+app.config.globalProperties.dayjs = dayjs;
+
+app.use(ElementPlus, {
+  locale: ElementPlusLocaleZhCn,
+});
+app.use(router);
+app.mount("#app");

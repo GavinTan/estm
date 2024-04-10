@@ -443,7 +443,7 @@ func getTaskLog(cluster, server string) {
 	writeTaskData(cluster, data)
 }
 
-func retryFailedShard(server string) {
+func retryFailedShard(server string, noCheck bool) {
 	var clusterState struct {
 		ClusterName      string `json:"cluster_name"`
 		NumberOfNodes    int    `json:"number_of_nodes"`
@@ -463,10 +463,10 @@ func retryFailedShard(server string) {
 
 	json.Unmarshal(body, &clusterState)
 
-	if clusterState.Status == "red" {
+	if noCheck || clusterState.Status == "red" {
 		logger.Println(server, clusterState.Status)
 		go func() {
-			resp, err := client.PostForm(fmt.Sprintf("%s/_cluster/reroute?retry_failed=true", server), nil)
+			resp, err := client.PostForm(fmt.Sprintf("%s/_cluster/reroute?retry_failed=true&metric=none", server), nil)
 			if err != nil {
 				logger.Println(err)
 				return
@@ -494,7 +494,7 @@ func runRetryFailedShard() {
 					}
 
 					if len(serverList) > 0 {
-						go retryFailedShard(getServer(serverList))
+						go retryFailedShard(getServer(serverList), false)
 					}
 				}
 			}
@@ -601,7 +601,7 @@ func main() {
 	templ := template.Must(template.New("").ParseFS(FS, "templates/*.html"))
 	r.SetHTMLTemplate(templ)
 
-	f, _ := fs.Sub(FS, "templates")
+	f, _ := fs.Sub(FS, "templates/static")
 	r.StaticFS("/static", http.FS(f))
 
 	r.GET("/", func(c *gin.Context) {
@@ -667,6 +667,20 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": checkEsService(d)})
 	})
 
+	r.POST("/retryShard", func(c *gin.Context) {
+		var d []checkSrvData
+		c.ShouldBindJSON(&d)
+
+		for _, v := range d {
+			if checkEsService(v) == 1 {
+				retryFailedShard(fmt.Sprintf("http://%s:%s", v.Host, v.Port), true)
+				break
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{"status": 1})
+	})
+
 	r.POST("/action", func(c *gin.Context) {
 		a := c.Query("a")
 
@@ -677,9 +691,10 @@ func main() {
 		}
 		c.ShouldBindJSON(&d)
 
-		cmd := exec.Command("ssh", fmt.Sprintf("root@%s", d.Host), fmt.Sprintf("systemctl %s %s", a, d.Systemd))
+		cmd := exec.Command("sh", "-c", fmt.Sprintf("eval `ssh-agent` ssh-add ~/.ssh/jump_id_rsa && ssh -o StrictHostKeyChecking=no root@%s systemctl %s %s", d.Host, a, d.Systemd))
 		out, err := cmd.CombinedOutput()
 		if err != nil {
+			logger.Println(err)
 			c.JSON(http.StatusInternalServerError, gin.H{"message": string(out)})
 		} else {
 			c.JSON(http.StatusOK, gin.H{})

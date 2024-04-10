@@ -1,240 +1,180 @@
 <!DOCTYPE html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/static/css/element-plus.css" />
+    <link rel="icon" href="/static/favicon.ico" />
+    <title>ES监控</title>
+    <style>
+      html,
+      body,
+      #app,
+      .el-container {
+        padding: 0px;
+        margin: 0px;
+        height: 100%;
+      }
 
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
-  <link rel="icon" href="/static/favicon.ico">
-  <title>ES监控</title>
-  <style>
-    .aside-container:not(.el-menu--collapse) {
-      position: fixed;
-      width: 210px;
-      height: 100%;
-      z-index: 1001;
-    }
+      .right-menu {
+        position: fixed;
+        z-index: 999;
+        display: none;
+        border: 1px solid #eee;
+        box-shadow: 0 0.5em 1em 0 rgba(0, 0, 0, 0.1);
+        border-radius: 1px;
+      }
 
-    .main-container {
-      min-height: 100%;
-      margin-left: 210px;
-      position: relative;
-      overflow: hidden;
-    }
+      .right-menu .el-menu-vertical:not(.el-menu--collapse) {
+        width: 140px;
+        min-height: 90px;
+      }
 
-    .right-menu {
-      position: fixed;
-      z-index: 999;
-      display: none;
-      border: 1px solid #eee;
-      box-shadow: 0 0.5em 1em 0 rgba(0, 0, 0, .1);
-      border-radius: 1px;
-    }
+      .right-menu .el-menu .el-menu-item {
+        height: 45px;
+        line-height: 45px;
+        width: auto;
+      }
 
-    .right-menu .el-menu-vertical:not(.el-menu--collapse) {
-      width: 140px;
-      min-height: 90px;
-    }
+      .right-menu .el-divider--horizontal {
+        margin: 1px 0;
+        background: 0 0;
+        border-top: 1px solid #e8eaec;
+      }
 
-    .right-menu .el-menu .el-menu-item {
-      height: 45px;
-      line-height: 45px;
-      width: auto;
-    }
+      .clearfix:before,
+      .clearfix:after {
+        display: table;
+        content: "";
+      }
 
-    .right-menu .el-divider--horizontal {
-      margin: 1px 0;
-      background: 0 0;
-      border-top: 1px solid #e8eaec;
-    }
+      .clearfix:after {
+        clear: both;
+      }
 
-    .clearfix:before,
-    .clearfix:after {
-      display: table;
-      content: "";
-    }
+      .tree-node {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 14px;
+        padding-right: 8px;
+      }
 
-    .clearfix:after {
-      clear: both;
-    }
+      .filter-container {
+        margin-bottom: 30px;
+        padding-top: 20px;
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        background-color: white;
+      }
 
-    .tree-node {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 14px;
-    }
+      .filter-container .el-input,
+      .filter-container .el-select {
+        width: 220px;
+      }
 
-    .filter-container {
-      margin-right: 80px;
-    }
+      .refresh-button {
+        position: absolute;
+        right: 0;
+        top: 0;
+        z-index: 9999999;
+      }
 
-    .filter-container .el-input {
-      width: 200px;
-      margin-bottom: 10px;
-    }
+      .el-tree .el-loading-mask {
+        top: 70px !important;
+      }
 
-    .refresh-button {
-      position: absolute;
-      right: 10px;
-      top: 0;
-    }
+      .el-icon {
+        vertical-align: middle;
+      }
 
-    .el-tree .el-loading-mask {
-      top: 70px !important;
-    }
-  </style>
-</head>
+      .setup-container {
+        position: absolute;
+        right: 0;
+        bottom: 30%;
+        z-index: 5000;
+        border-radius: 50%;
+        padding: 10px;
+        background-color: white;
+        cursor: pointer;
+        box-shadow: rgba(0, 0, 0, 0.12) 0px 2px 8px 0px;
+        color: #374151;
+      }
 
-<body>
-  <div id="app">
-    <el-menu default-active="/" class="aside-container" :default-active="$route.path" :collapse="isCollapse" router>
-      <el-menu-item index="/service">
-        <span slot="title">服务管理</span>
-      </el-menu-item>
+      .setup-container:hover {
+        color: #000;
+      }
 
-      <el-submenu index="estask">
-        <template slot="title">任务监控</template>
-        <el-menu-item index="/estask/real">
-          <i class="el-icon-time"></i>
-          <span slot="title">实时</span>
-        </el-menu-item>
-        <el-menu-item index="/estask/history">
-          <i class="el-icon-tickets"></i>
-          <span slot="title">历史</span>
-        </el-menu-item>
-      </el-submenu>
-    </el-menu>
-    <div class="main-container">
-      <router-view></router-view>
+      .desc-item {
+        min-width: 124px;
+      }
+
+      @media (min-width: 768px) {
+        .el-dialog {
+          width: 500px !important;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="app">
+      <el-container>
+        <el-aside
+          :width="isCollapse ? 'auto' : '200px'"
+          style="position: relative; overflow: initial"
+        >
+          <el-menu
+            style="height: 100%"
+            :default-active="$route.path"
+            :default-openeds="[$route.path]"
+            :collapse="isCollapse"
+            router
+            unique-opened
+          >
+            <el-menu-item index="/service">
+              <el-icon><Tickets /></el-icon>
+              <template #title>服务管理</template>
+            </el-menu-item>
+
+            <el-sub-menu index="estask">
+              <template #title>
+                <el-icon><Timer /></el-icon>
+                <span>任务监控</span>
+              </template>
+              <el-menu-item index="/estask/real"> 实时 </el-menu-item>
+              <el-menu-item index="/estask/history"> 历史 </el-menu-item>
+            </el-sub-menu>
+          </el-menu>
+          <div
+            :style="isCollapse ? 'position: absolute;z-index: 2000;top: 50%;left: 48px;' : 'position: absolute;z-index: 2000;top: 50%;right: -16px;'"
+          >
+            <el-button circle @click="isCollapse = !isCollapse">
+              <el-icon v-if="isCollapse"
+                ><arrow-right color="gray"></arrow-right
+              ></el-icon>
+              <el-icon v-else><arrow-left color="gray"></arrow-left></el-icon>
+            </el-button>
+          </div>
+        </el-aside>
+
+        <el-main>
+          <router-view></router-view>
+        </el-main>
+      </el-container>
     </div>
-  </div>
 
-  {{template "service"}}
-
-  <template id="real">
-    <div style="margin-left: 30px;">
-      <el-dialog title="DSL" :visible.sync="dslVisible">
-        {% dsl %}
-      </el-dialog>
-
-      <div class="filter-container">
-        <el-input v-model="search" placeholder="搜索"></el-input>
-        <el-select v-model="searchCluster" placeholder="选择集群" @change="fetchData">
-          <el-option v-for="i in clusterOptions" :key="i.value" :label="i.label" :value="i.value">
-          </el-option>
-        </el-select>
-
-        <el-button type="primary" class="refresh-button" @mousedown.native="refreshOnDown" @mouseup.native="refreshOnUp" icon="el-icon-refresh-right" @blur.prevent circle>
-        </el-button>
-      </div>
-
-      <el-table :data="tables" style="width: 100%" v-loading="loading" element-loading-text="加载中">
-        <el-table-column prop="index" label="索引">
-        </el-table-column>
-        <el-table-column prop="id" label="ID">
-        </el-table-column>
-        <el-table-column prop="type" label="类型">
-        </el-table-column>
-        <el-table-column prop="action" label="动作">
-        </el-table-column>
-        <el-table-column prop="node" label="节点">
-        </el-table-column>
-        <el-table-column prop="dsl" label="dsl">
-          <template slot-scope="scope">
-            <el-button type="text" @click="showDialog(scope.row.dsl)">显示</el-button>
-          </template>
-        </el-table-column>
-        <el-table-column prop="start_time" label="开始时间" width="160">
-        </el-table-column>
-        <el-table-column prop="running_time" label="执行时长(秒)" sortable>
-        </el-table-column>
-        <el-table-column label="操作">
-          <template slot-scope="scope">
-            <el-button v-if="scope.row.cancellable" type="text" @click="cancelTask(scope.row)">取消</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
-  </template>
-
-  <template id="history">
-    <div style="margin-left: 30px;">
-      <el-dialog title="DSL" :visible.sync="dslVisible">
-        {% dsl %}
-      </el-dialog>
-
-      <div class="filter-container">
-        <el-input v-model="search" placeholder="搜索（索引、ID）" @change="handleFilterData" clearable></el-input>
-        <el-input v-model="searchNode" placeholder="搜索（节点）" @change="handleFilterData" clearable></el-input>
-        <el-select v-model="searchCluster" placeholder="选择集群" @change="handleFilterData" clearable>
-          <el-option v-for="i in clusterOptions" :key="i.value" :label="i.label" :value="i.value">
-          </el-option>
-        </el-select>
-
-        <el-date-picker v-model="qd" type="date" placeholder="选择日期" :picker-options="pickerOptions"
-          value-format="yyyy-MM-dd" @change="handleQuerydate">
-        </el-date-picker>
-        <el-time-picker is-range v-model="qt" range-separator="至" start-placeholder="开始时间" end-placeholder="结束时间"
-          placeholder="选择时间范围" @change="handleQuerydate" value-format="timestamp">
-        </el-time-picker>
-      </div>
-
-      <el-button class="refresh-button" type="primary" @click="handleRefresh"
-        icon="el-icon-refresh-right" circle>
-      </el-button>
-
-      <el-table :data="tableData" style="width: 100%" @sort-change="handleSort" v-loading="loading"
-        element-loading-text="加载中">
-        <el-table-column prop="_source.index" label="索引">
-        </el-table-column>
-        <el-table-column prop="_id" label="ID">
-        </el-table-column>
-        <el-table-column prop="_source.type" label="类型">
-        </el-table-column>
-        <el-table-column prop="_source.action" label="动作">
-        </el-table-column>
-        <el-table-column prop="_source.node" label="节点">
-        </el-table-column>
-        <el-table-column prop="_source.cluster" label="集群">
-        </el-table-column>
-        <el-table-column label="dsl">
-          <template slot-scope="scope">
-            <el-button type="text" @click="showDialog(scope.row._source.description)">显示</el-button>
-          </template>
-        </el-table-column>
-        </el-table-column>
-        <el-table-column prop="_source.start_time_in_millis" label="开始时间" sortable="custom" width="160">
-          <template slot-scope="scope">
-            {% moment(scope.row._source.start_time_in_millis).format("YYYY-MM-DD HH:mm:ss") %}
-          </template>
-        </el-table-column>
-        <el-table-column prop="_source.running_time_in_nanos" label="执行时长(秒)" sortable="custom">
-          <template slot-scope="scope">
-            {% scope.row._source.running_time_in_nanos / 1e9 %}
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <el-pagination style="margin-top: 50px;" @size-change="handleSizeChange" @current-change="handleCurrentChange"
-        :current-page="tableCurrentPage" :page-sizes="[10, 100, 150, 200]" :page-size="tablePageSize"
-        layout="total, sizes, prev, pager, next, jumper" :total="tableTotal">
-      </el-pagination>
-
-      <el-backtop></el-backtop>
-    </div>
-  </template>
-</body>
-<script src="https://unpkg.com/vue@2/dist/vue.js"></script>
-<script src="https://unpkg.com/element-ui/lib/index.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/axios@1.1.2/dist/axios.min.js"></script>
-<script src="https://unpkg.com/vue-router@3"></script>
-<script src="https://unpkg.com/http-vue-loader"></script>
-<script src="/static/moment.min.js"></script>
-<script src="/static/index.js"></script>
-
-
-
+    {{template "service"}} {{template "real"}} {{template "history"}}
+  </body>
+  <script src="/static/js/lib/vue3.min.js"></script>
+  <script src="/static/js/lib/element-plus.min.js"></script>
+  <script src="/static/js/lib/element-plus-icons.min.js"></script>
+  <script src="/static/js/lib/element-plus-locale-zh-cn.min.js"></script>
+  <script src="/static/js/lib/axios.min.js"></script>
+  <script src="/static/js/lib/vue-router.min.js"></script>
+  <script src="/static/js/lib/dayjs.min.js"></script>
+  <script src="/static/js/index.js"></script>
 </html>

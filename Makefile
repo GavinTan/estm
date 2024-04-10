@@ -4,7 +4,11 @@ LDFLAGS := -s -w
 
 all: build
 
-build: env CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/estm
+build:
+	env CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -tags estm -o bin/estm
+
+env:
+	@go version
 
 clean:
 	rm -rf ./bin
