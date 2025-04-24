@@ -37,6 +37,8 @@ const serviceView = {
       gform: {
         name: "",
         kibana: "",
+        user: "",
+        passwd: "",
       },
       gformRules: {
         name: [{ required: true, message: "", trigger: "blur" }],
@@ -113,6 +115,8 @@ const serviceView = {
                     tid: `0-${gindex}-${sindex}`,
                     type: "cluster",
                     kibana: c.kibana,
+                    user: c.user,
+                    passwd: c.passwd,
                   };
                 }) || [],
             });
@@ -201,6 +205,8 @@ const serviceView = {
       this.gform.name = this.clickNode.name;
       if (this.clickNode.type === "cluster") {
         this.gform.kibana = this.clickNode.kibana;
+        this.gform.user = this.clickNode.user;
+        this.gform.passwd = this.clickNode.passwd;
       }
       this.addGroupVisible = true;
       this.editNode = true;
@@ -259,6 +265,8 @@ const serviceView = {
                   if (i.cid === this.clickNode.cid) {
                     i.name = this.gform.name;
                     i.kibana = this.gform.kibana;
+                    i.user = this.gform.user;
+                    i.passwd = this.gform.passwd;
                   }
                   return i;
                 });
@@ -271,6 +279,8 @@ const serviceView = {
                     name: this.gform.name,
                     cid: new Date().getTime(),
                     kibana: this.gform.kibana,
+                    user: this.gform.user,
+                    passwd: this.gform.passwd,
                   },
                 ];
               } else {
@@ -278,6 +288,8 @@ const serviceView = {
                   name: this.gform.name,
                   cid: new Date().getTime(),
                   kibana: this.gform.kibana,
+                  user: this.gform.user,
+                  passwd: this.gform.passwd,
                 });
               }
             }
@@ -289,10 +301,12 @@ const serviceView = {
             .post(`/service/${this.clickNode.id}`, data)
             .then((res) => {
               this.fetchTreeData();
-              this.expands.push(this.clickNode.tid);
+              if (this.expands.indexOf(this.clickNode.tid) === -1) {
+                this.expands.push(this.clickNode.tid);
+              }
               this.$message.success(res.data?.message || res.statusText);
               this.addGroupVisible = false;
-              this.$refs.gform.resetFields();
+              // this.$refs.gform.resetFields();
               this.editNode = false;
             })
             .catch((error) => {
@@ -473,9 +487,11 @@ const realView = {
       res.data?.forEach((service) => {
         service._source?.children?.forEach((c) => {
           this.clusterOptions.push({ label: c.name, value: c.name });
-          this.esClusterData[c.name] = c.data.map(
-            (i) => `http://${i.host}:${i.port}`
-          );
+          this.esClusterData[c.name] = {
+            servers: c.data.map((i) => `http://${i.host}:${i.port}`),
+            user: c.user,
+            passwd: c.passwd,
+          };
         });
       });
 
@@ -486,7 +502,7 @@ const realView = {
     fetchData() {
       this.loading = true;
       axios
-        .get(`/getRealData?s=${this.esClusterData[this.searchCluster]}`)
+        .post("/getRealData", this.esClusterData[this.searchCluster])
         .then(({ data }) => {
           this.tableData = data;
         })
@@ -499,11 +515,10 @@ const realView = {
     },
     cancelTask(row) {
       axios
-        .post(
-          `/cancelTask?s=${this.esClusterData[this.searchCluster]}`,
-          { tid: row.id },
-          { headers: { "Content-Type": "multipart/form-data" } }
-        )
+        .post(`/cancelTask`, {
+          ...this.esClusterData[this.searchCluster],
+          tid: row.id,
+        })
         .then(() => this.$message.success("取消任务成功！"))
         .catch(() => this.$message.error("取消任务失败！"));
     },

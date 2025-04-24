@@ -1,21 +1,9 @@
 {{define "service"}}
 <template id="service">
   <div style="height: 100%">
-    <el-dialog
-      title="添加"
-      v-model="addServiceVisible"
-      width="480px"
-      :close-on-click-modal="false"
-    >
-      <el-form
-        :model="sform"
-        ref="sform"
-        label-position="left"
-        label-width="100px"
-        :rules="sformRules"
-        :show-message="false"
-        size="large"
-      >
+    <el-dialog title="添加" v-model="addServiceVisible" width="480px" :close-on-click-modal="false">
+      <el-form :model="sform" ref="sform" label-position="left" label-width="100px" :rules="sformRules"
+        :show-message="false" size="large">
         <el-form-item label="服务器" prop="host">
           <el-input v-model="sform.host" autocomplete="off"></el-input>
         </el-form-item>
@@ -23,18 +11,10 @@
           <el-input v-model="sform.port" autocomplete="off"></el-input>
         </el-form-item>
         <el-form-item label="服务" prop="systemd">
-          <el-input
-            v-model="sform.systemd"
-            autocomplete="off"
-            placeholder="systemd服务名称"
-          ></el-input>
+          <el-input v-model="sform.systemd" autocomplete="off" placeholder="systemd服务名称"></el-input>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
-          <el-input
-            v-model="sform.remark"
-            autocomplete="off"
-            placeholder="备注"
-          ></el-input>
+          <el-input v-model="sform.remark" autocomplete="off" placeholder="备注"></el-input>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -49,51 +29,32 @@
       </template>
     </el-dialog>
 
-    <el-dialog
-      :title="editNode ? '编辑' : '添加'"
-      v-model="addGroupVisible"
-      width="360px"
-      :close-on-click-modal="false"
-    >
-      <el-form
-        :model="gform"
-        ref="gform"
-        label-position="left"
-        label-width="100px"
-        :rules="gformRules"
-        :show-message="false"
-        size="large"
-      >
+    <el-dialog :title="editNode ? '编辑' : '添加'" v-model="addGroupVisible" width="360px" :close-on-click-modal="false">
+      <el-form :model="gform" ref="gform" label-position="left" label-width="100px" :rules="gformRules"
+        :show-message="false" size="large">
         <el-form-item label="名称" prop="name">
           <el-input v-model="gform.name" autocomplete="off"></el-input>
         </el-form-item>
-        <el-form-item
-          label="kibana"
-          prop="kibana"
-          v-if="clickNode.type === 'cluster'"
-        >
+        <el-form-item label="ES账号" prop="user" v-if="clickNode.type === 'cluster'">
+          <el-input v-model="gform.user" autocomplete="off"></el-input>
+        </el-form-item>
+        <el-form-item label="ES密码" prop="passwd" v-if="clickNode.type === 'cluster'">
+          <el-input v-model="gform.passwd" autocomplete="off"></el-input>
+        </el-form-item>
+        <el-form-item label="kibana" prop="kibana" v-if="clickNode.type === 'cluster'">
           <el-input v-model="gform.kibana" autocomplete="off"></el-input>
         </el-form-item>
       </el-form>
 
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="addGroupVisible = false" size="large">
+          <el-button @click="addGroupVisible=false; editNode=false;gform={}" size="large">
             取 消
           </el-button>
-          <el-button
-            v-if="clickNode.type === 'base'"
-            type="primary"
-            @click="handleAddGroup"
-          >
+          <el-button v-if="clickNode.type === 'base'" type="primary" @click="handleAddGroup">
             确 定
           </el-button>
-          <el-button
-            v-else
-            type="primary"
-            @click="handleAddCluster"
-            size="large"
-          >
+          <el-button v-else type="primary" @click="handleAddCluster" size="large">
             确 定
           </el-button>
         </div>
@@ -109,7 +70,9 @@
           </el-menu-item>
           <el-divider></el-divider>
           <el-menu-item>
-            <el-icon><Refresh /></el-icon>
+            <el-icon>
+              <Refresh />
+            </el-icon>
             <span slot="title">刷新数据</span>
           </el-menu-item>
         </div>
@@ -125,14 +88,14 @@
           </el-menu-item>
           <el-divider></el-divider>
           <el-menu-item @click="handleDelGroup">
-            <el-icon><Delete /></el-icon>
+            <el-icon>
+              <Delete />
+            </el-icon>
             <span slot="title">删除节点</span>
           </el-menu-item>
         </div>
         <div v-if="clickNode.type === 'cluster'">
-          <el-menu-item
-            @click="sform={host: '',systemd: '',port: '9200'};addServiceVisible = true"
-          >
+          <el-menu-item @click="sform={host: '',systemd: '',port: '9200'};addServiceVisible = true">
             <el-icon><circle-plus /></el-icon>
             <span slot="title">添加ES服务</span>
           </el-menu-item>
@@ -143,7 +106,9 @@
           </el-menu-item>
           <el-divider></el-divider>
           <el-menu-item @click="handleDelCluster">
-            <el-icon><Delete /></el-icon>
+            <el-icon>
+              <Delete />
+            </el-icon>
             <span slot="title">删除集群</span>
           </el-menu-item>
         </div>
@@ -152,28 +117,11 @@
 
     <el-row :gutter="20" style="height: 100%">
       <el-col :xs="24" :sm="24" :md="9" :lg="7" :xl="6" style="height: 100%">
-        <el-input
-          v-model="filterText"
-          placeholder="搜索"
-          prefix-icon="el-icon-search"
-        ></el-input>
-        <el-tree
-          ref="tree"
-          :filter-node-method="filterNode"
-          :expand-on-click-node="true"
-          :data="treeData"
-          :props="defaultProps"
-          @node-click="handleNodeClick"
-          @node-contextmenu="handleRightClick"
-          node-key="tid"
-          :default-expanded-keys="expands"
-          expand-on-click-node
-          highlight-current
-          accordion
-          v-loading="loading"
-          element-loading-spinner="el-icon-loading"
-          element-loading-text="加载中"
-        >
+        <el-input v-model="filterText" placeholder="搜索" prefix-icon="el-icon-search"></el-input>
+        <el-tree ref="tree" :filter-node-method="filterNode" :expand-on-click-node="true" :data="treeData"
+          :props="defaultProps" @node-click="handleNodeClick" @node-contextmenu="handleRightClick" node-key="tid"
+          :default-expanded-keys="expands" expand-on-click-node highlight-current accordion v-loading="loading"
+          element-loading-spinner="el-icon-loading" element-loading-text="加载中">
           <template #default="{ node, data }">
             <span class="tree-node">
               <span>
@@ -188,12 +136,8 @@
               </span>
 
               <span>
-                <el-link
-                  type="primary"
-                  v-if="data.type === 'cluster' && data.kibana"
-                  :href="data.kibana"
-                  target="_blank"
-                >
+                <el-link type="primary" v-if="data.type === 'cluster' && data.kibana" :href="data.kibana"
+                  target="_blank">
                   Kibana
                 </el-link>
               </span>
@@ -205,13 +149,8 @@
       <el-col :xs="24" :sm="24" :md="15" :lg="17" :xl="18" style="height: 100%">
         <el-card style="height: 100%" body-style="height: 100%">
           <div slot="header" class="clearfix">
-            <el-input
-              v-model="search"
-              style="width: 200px; float: right"
-              class="filter-item"
-              placeholder="搜索"
-              prefix-icon="el-icon-search"
-            ></el-input>
+            <el-input v-model="search" style="width: 200px; float: right" class="filter-item" placeholder="搜索"
+              prefix-icon="el-icon-search"></el-input>
           </div>
 
           <el-table :data="tables" height="100%">
@@ -220,38 +159,19 @@
             <el-table-column prop="port" label="端口"> </el-table-column>
             <el-table-column label="状态">
               <template #default="scope">
-                <el-tag v-show="scope.row.status === 1" type="success"
-                  >运行中</el-tag
-                >
-                <el-tag v-show="scope.row.status === 0" type="warning"
-                  >已停止</el-tag
-                >
-                <el-tag v-show="scope.row.status === -1" type="danger"
-                  >请求出错</el-tag
-                >
+                <el-tag v-show="scope.row.status === 1" type="success">运行中</el-tag>
+                <el-tag v-show="scope.row.status === 0" type="warning">已停止</el-tag>
+                <el-tag v-show="scope.row.status === -1" type="danger">请求出错</el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="remark" label="备注"> </el-table-column>
             <el-table-column label="操作" width="150">
               <template #default="scope">
-                <el-button
-                  v-if="scope.row.status === 1"
-                  type="text"
-                  @click="handleService('stop', scope.row)"
-                  >停止
+                <el-button v-if="scope.row.status === 1" type="text" @click="handleService('stop', scope.row)">停止
                 </el-button>
-                <el-button
-                  v-else
-                  type="text"
-                  @click="handleService('start', scope.row)"
-                  >启动</el-button
-                >
-                <el-button type="text" @click="handleEditService(scope.row)"
-                  >编辑</el-button
-                >
-                <el-button type="text" @click="handleDelService(scope.row.sid)"
-                  >删除</el-button
-                >
+                <el-button v-else type="text" @click="handleService('start', scope.row)">启动</el-button>
+                <el-button type="text" @click="handleEditService(scope.row)">编辑</el-button>
+                <el-button type="text" @click="handleDelService(scope.row.sid)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -263,28 +183,17 @@
   <el-dialog v-model="setupVisible" title="快捷功能" width="400" draggable>
     <div>
       <el-row justify="center">
-        <el-select
-          v-model="selectEsCluster"
-          placeholder="选择集群"
-          size="large"
-          style="width: 320px"
-        >
-          <el-option
-            v-for="i in Object.keys(esClusterData)"
-            :label="i"
-            :value="i"
-          />
+        <el-select v-model="selectEsCluster" placeholder="选择集群" size="large" style="width: 320px">
+          <el-option v-for="i in Object.keys(esClusterData)" :label="i" :value="i" />
         </el-select>
       </el-row>
 
-      <div
-        style="
+      <div style="
           display: flex;
           justify-content: center;
           gap: 20px;
           margin: 40px 0px;
-        "
-      >
+        ">
         <el-button size="large" @click="handleRetryShard">重试分片</el-button>
         <el-button size="large" @click="handleRetryShard">重试分片</el-button>
         <el-button size="large" @click="handleRetryShard">重试分片</el-button>

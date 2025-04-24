@@ -80,7 +80,7 @@
         position: absolute;
         right: 0;
         top: 0;
-        z-index: 9999999;
+        z-index: 2000;
       }
 
       .el-tree .el-loading-mask {
@@ -136,13 +136,17 @@
             unique-opened
           >
             <el-menu-item index="/service">
-              <el-icon><Tickets /></el-icon>
+              <el-icon>
+                <Tickets />
+              </el-icon>
               <template #title>服务管理</template>
             </el-menu-item>
 
             <el-sub-menu index="estask">
               <template #title>
-                <el-icon><Timer /></el-icon>
+                <el-icon>
+                  <Timer />
+                </el-icon>
                 <span>任务监控</span>
               </template>
               <el-menu-item index="/estask/real"> 实时 </el-menu-item>

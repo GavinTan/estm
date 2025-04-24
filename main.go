@@ -31,24 +31,24 @@ var FS embed.FS
 
 var (
 	configName = "config.toml"
+	logger     = log.Default()
 
-	client = &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	logger = log.Default()
-
-	indexName      string
-	taskActions    string
-	monitorEnvList []string
-	writeDataEs    []string
+	indexName         string
+	taskActions       string
+	monitorEnvList    []string
+	writeDataEs       []string
+	writeDataEsUser   string
+	writeDataEsPasswd string
+	es                *elasticsearch.Client
 )
 
 type Config struct {
-	IndexName   string   `toml:"index_name"`
-	TaskActions string   `toml:"task_actions"`
-	MonitorEnvs []string `toml:"monitor_envs"`
-	WriteDataEs []string `toml:"write_data_es"`
+	IndexName         string   `toml:"index_name"`
+	TaskActions       string   `toml:"task_actions"`
+	MonitorEnvs       []string `toml:"monitor_envs"`
+	WriteDataEs       []string `toml:"write_data_es"`
+	WriteDataEsUser   string   `toml:"write_data_es_user"`
+	WriteDataEsPasswd string   `toml:"write_data_es_password"`
 }
 
 type taskData struct {
@@ -104,6 +104,8 @@ type serviceData struct {
 		Data   []esData `json:"data"`
 		Cid    int64    `json:"cid"`
 		Kibana string   `json:"kibana,omitempty"`
+		User   string   `json:"user,omitempty"`
+		Passwd string   `json:"passwd,omitempty"`
 	} `json:"children"`
 	CreatedAt int64 `json:"createdAt,omitempty"`
 	UpdatedAt int64 `json:"updatedAt,omitempty"`
@@ -114,11 +116,29 @@ type servceObj struct {
 	indexName string
 }
 
-func getHistoryData(args map[string]string) interface{} {
-	es, _ := elasticsearch.NewClient(elasticsearch.Config{
-		Addresses: writeDataEs,
-	})
+type esUrlData struct {
+	Servers []string
+	User    string
+	Passwd  string
+}
 
+func NewRequest(method string, url string, body io.Reader, auth ...string) (resp *http.Response, err error) {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(auth) == 2 {
+		req.SetBasicAuth(auth[0], auth[1])
+	}
+
+	return client.Do(req)
+}
+
+func getHistoryData(args map[string]string) interface{} {
 	var buf bytes.Buffer
 
 	query := map[string]interface{}{
@@ -218,15 +238,25 @@ func getHistoryData(args map[string]string) interface{} {
 	return gin.H{"total": r["hits"].(map[string]interface{})["total"].(map[string]interface{})["value"], "data": r["hits"].(map[string]interface{})["hits"].([]interface{})}
 }
 
-func getRealData(services []string) interface{} {
-	resp, err := client.Get(fmt.Sprintf("%s/_tasks?actions=*search&detailed", getServer(services)))
+func getRealData(ed esUrlData) interface{} {
+	server := getServer(ed.Servers)
+	if server == "" {
+		logger.Printf("%s no server is available\n", ed.Servers)
+		return []retTaskData{}
+	}
+
+	resp, err := NewRequest("GET", fmt.Sprintf("%s/_tasks?actions=*search&detailed", server), http.NoBody, ed.User, ed.Passwd)
 	if err != nil {
-		fmt.Println(err)
 		return []retTaskData{}
 	}
 
 	defer resp.Body.Close()
+
 	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		fmt.Println(string(data))
+		return []retTaskData{}
+	}
 
 	var newData map[string]map[string]nodeData
 	json.Unmarshal(data, &newData)
@@ -266,8 +296,13 @@ func getRealData(services []string) interface{} {
 	return tmpData
 }
 
-func cancelTask(tid string, servers []string) bool {
-	resp, err := client.PostForm(fmt.Sprintf("%s/_tasks/%s/_cancel", getServer(servers), tid), url.Values{})
+func cancelTask(tid string, servers []string, auth ...string) bool {
+	server := getServer(servers)
+	if server == "" {
+		logger.Printf("%s no server is available\n", servers)
+		return false
+	}
+	resp, err := NewRequest("POST", fmt.Sprintf("%s/_tasks/%s/_cancel", server, tid), http.NoBody, auth...)
 	if err != nil {
 		fmt.Println(err)
 		return false
@@ -284,10 +319,6 @@ func cancelTask(tid string, servers []string) bool {
 }
 
 func Service() *servceObj {
-	es, _ := elasticsearch.NewClient(elasticsearch.Config{
-		Addresses: writeDataEs,
-	})
-
 	return &servceObj{es: es, indexName: "estm-service"}
 }
 
@@ -382,16 +413,6 @@ func checkEsService(data checkSrvData) int {
 
 func writeTaskData(cluster string, data map[string]map[string]nodeData) {
 	indexName := fmt.Sprintf("%s-%s", indexName, time.Now().Format("2006-01-02"))
-
-	es, err := elasticsearch.NewClient(elasticsearch.Config{
-		Addresses: writeDataEs,
-	})
-
-	if err != nil {
-		logger.Println(err)
-		return
-	}
-
 	for _, node := range data["nodes"] {
 		for taskId, task := range node.Tasks {
 			reIndex := regexp.MustCompile(`indices\[(.*?)\]`)
@@ -426,8 +447,14 @@ func writeTaskData(cluster string, data map[string]map[string]nodeData) {
 	}
 }
 
-func getTaskLog(cluster, server string) {
-	resp, err := client.Get(fmt.Sprintf("%s/_tasks?actions=%s&detailed", server, taskActions))
+func getTaskLog(cluster string, servers []string, auth ...string) {
+	server := getServer(servers)
+	if server == "" {
+		logger.Printf("%s no server is available\n", servers)
+		return
+	}
+
+	resp, err := NewRequest("GET", fmt.Sprintf("%s/_tasks?actions=%s&detailed", server, taskActions), http.NoBody, auth...)
 	if err != nil {
 		logger.Println(err)
 		return
@@ -443,7 +470,13 @@ func getTaskLog(cluster, server string) {
 	writeTaskData(cluster, data)
 }
 
-func retryFailedShard(server string, noCheck bool) {
+func retryFailedShard(servers []string, noCheck bool, auth ...string) {
+	server := getServer(servers)
+	if server == "" {
+		logger.Printf("%s no server is available\n", servers)
+		return
+	}
+
 	var clusterState struct {
 		ClusterName      string `json:"cluster_name"`
 		NumberOfNodes    int    `json:"number_of_nodes"`
@@ -451,7 +484,7 @@ func retryFailedShard(server string, noCheck bool) {
 		UnassignedShards int    `json:"unassigned_shards"`
 	}
 
-	resp, err := client.Get(fmt.Sprintf("%s/_cluster/health", server))
+	resp, err := NewRequest("GET", fmt.Sprintf("%s/_cluster/health", server), http.NoBody, auth...)
 	if err != nil {
 		logger.Println(err)
 		return
@@ -466,7 +499,7 @@ func retryFailedShard(server string, noCheck bool) {
 	if noCheck || clusterState.Status == "red" {
 		logger.Println(server, clusterState.Status)
 		go func() {
-			resp, err := client.PostForm(fmt.Sprintf("%s/_cluster/reroute?retry_failed=true&metric=none", server), nil)
+			resp, err := NewRequest("POST", fmt.Sprintf("%s/_cluster/reroute?retry_failed=true&metric=none", server), http.NoBody, auth...)
 			if err != nil {
 				logger.Println(err)
 				return
@@ -494,7 +527,7 @@ func runRetryFailedShard() {
 					}
 
 					if len(serverList) > 0 {
-						go retryFailedShard(getServer(serverList), false)
+						go retryFailedShard(serverList, false, cluster.User, cluster.Passwd)
 					}
 				}
 			}
@@ -517,7 +550,7 @@ func runGetTaskLog() {
 					}
 
 					if len(serverList) > 0 {
-						go getTaskLog(cluster.Name, getServer(serverList))
+						go getTaskLog(cluster.Name, serverList, cluster.User, cluster.Passwd)
 					}
 				}
 			}
@@ -551,6 +584,8 @@ func initConfig() {
 				"http://192.168.10.3:9210",
 				"http://192.168.10.4:9210",
 			},
+			WriteDataEsUser:   "elastic",
+			WriteDataEsPasswd: "changeme",
 		}
 
 		file, err := os.Create(configName)
@@ -575,6 +610,8 @@ func initConfig() {
 	taskActions = conf.TaskActions
 	monitorEnvList = conf.MonitorEnvs
 	writeDataEs = conf.WriteDataEs
+	writeDataEsUser = conf.WriteDataEsUser
+	writeDataEsPasswd = conf.WriteDataEsPasswd
 }
 
 func init() {
@@ -588,6 +625,17 @@ func init() {
 	}
 
 	initConfig()
+
+	var err error
+	es, err = elasticsearch.NewClient(elasticsearch.Config{
+		Addresses: writeDataEs,
+		Username:  writeDataEsUser,
+		Password:  writeDataEsPasswd,
+	})
+
+	if err != nil {
+		logger.Fatal(err)
+	}
 
 	c := cron.New()
 	c.AddFunc("@every 500ms", runGetTaskLog)
@@ -673,7 +721,7 @@ func main() {
 
 		for _, v := range d {
 			if checkEsService(v) == 1 {
-				retryFailedShard(fmt.Sprintf("http://%s:%s", v.Host, v.Port), true)
+				retryFailedShard([]string{fmt.Sprintf("http://%s:%s", v.Host, v.Port)}, true)
 				break
 			}
 		}
@@ -702,27 +750,21 @@ func main() {
 
 	})
 
-	r.GET("/getRealData", func(c *gin.Context) {
-		var servers []string
-		s := c.Query("s")
+	r.POST("/getRealData", func(c *gin.Context) {
+		var d esUrlData
+		c.ShouldBindJSON(&d)
 
-		if s != "" {
-			servers = strings.Split(s, ",")
-		}
-
-		c.JSON(http.StatusOK, getRealData(servers))
+		c.JSON(http.StatusOK, getRealData(d))
 	})
 
 	r.POST("/cancelTask", func(c *gin.Context) {
-		var servers []string
-		tid := c.PostForm("tid")
-		s := c.Query("s")
-
-		if s != "" {
-			servers = strings.Split(s, ",")
+		var d struct {
+			esUrlData
+			tid string
 		}
+		c.ShouldBindJSON(&d)
 
-		if cancelTask(tid, servers) {
+		if cancelTask(d.tid, d.Servers, d.User, d.Passwd) {
 			c.JSON(http.StatusOK, gin.H{})
 		} else {
 			c.JSON(http.StatusInternalServerError, gin.H{})
