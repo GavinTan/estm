@@ -39,7 +39,6 @@ var (
 	writeDataEs       []string
 	writeDataEsUser   string
 	writeDataEsPasswd string
-	es                *elasticsearch.Client
 )
 
 type Config struct {
@@ -122,10 +121,23 @@ type esUrlData struct {
 	Passwd  string
 }
 
-func NewRequest(method string, url string, body io.Reader, auth ...string) (resp *http.Response, err error) {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
+var (
+	es *elasticsearch.Client
+
+	transport = &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     15 * time.Second,
+		DisableKeepAlives:   false,
 	}
+
+	client = &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: transport,
+	}
+)
+
+func NewRequest(method string, url string, body io.Reader, auth ...string) (resp *http.Response, err error) {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return nil, err
@@ -412,7 +424,7 @@ func checkEsService(data checkSrvData) int {
 }
 
 func writeTaskData(cluster string, data map[string]map[string]nodeData) {
-	indexName := fmt.Sprintf("%s-%s", indexName, time.Now().Format("2006-01-02"))
+	wIndexName := fmt.Sprintf("%s-%s", indexName, time.Now().Format("2006-01-02"))
 	for _, node := range data["nodes"] {
 		for taskId, task := range node.Tasks {
 			reIndex := regexp.MustCompile(`indices\[(.*?)\]`)
@@ -426,19 +438,20 @@ func writeTaskData(cluster string, data map[string]map[string]nodeData) {
 			task.Cluster = cluster
 
 			if task.ParentTaskId == "" {
-				res, err := es.Index(indexName, esutil.NewJSONReader(task), es.Index.WithDocumentID(taskId))
-				// res, err := es.Index(indexName, esutil.NewJSONReader(vv))
+				res, err := es.Index(wIndexName, esutil.NewJSONReader(task), es.Index.WithDocumentID(taskId))
+				// res, err := es.Index(wIndexName, esutil.NewJSONReader(vv))
 
 				if err != nil {
 					logger.Println(err)
 					return
 				}
 
-				defer res.Body.Close()
 				// io.Copy(io.Discard, res.Body)
 
+				body, _ := io.ReadAll(res.Body)
+				res.Body.Close()
+
 				if res.IsError() {
-					body, _ := io.ReadAll(res.Body)
 					logger.Printf("write index failed! %s\n", string(body))
 				}
 			}
@@ -631,6 +644,7 @@ func init() {
 		Addresses: writeDataEs,
 		Username:  writeDataEsUser,
 		Password:  writeDataEsPasswd,
+		Transport: transport,
 	})
 
 	if err != nil {
