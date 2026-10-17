@@ -241,8 +241,12 @@ func getHistoryData(args map[string]string) interface{} {
 	res, err := es.Search(es.Search.WithIndex(fmt.Sprintf("estasklog-%s", args["qd"])), es.Search.WithBody(&buf))
 	if err != nil || res.StatusCode != 200 {
 		fmt.Println(err)
+		if res != nil {
+			res.Body.Close()
+		}
 		return gin.H{"total": 0, "data": []interface{}{}}
 	}
+	defer res.Body.Close()
 
 	var r map[string]interface{}
 	json.NewDecoder(res.Body).Decode(&r)
@@ -339,8 +343,12 @@ func (sd servceObj) All() interface{} {
 
 	res, err := sd.es.Search(sd.es.Search.WithIndex(sd.indexName), sd.es.Search.WithBody(&buf), sd.es.Search.WithSort("createdAt:asc"))
 	if err != nil || res.StatusCode != 200 {
+		if res != nil {
+			res.Body.Close()
+		}
 		return []interface{}{}
 	}
+	defer res.Body.Close()
 
 	var r map[string]interface{}
 	json.NewDecoder(res.Body).Decode(&r)
@@ -352,8 +360,12 @@ func (sd servceObj) Get(id string) interface{} {
 
 	res, err := sd.es.Get(sd.indexName, id)
 	if err != nil || res.StatusCode != 200 {
+		if res != nil {
+			res.Body.Close()
+		}
 		return []interface{}{}
 	}
+	defer res.Body.Close()
 
 	var r map[string]interface{}
 	json.NewDecoder(res.Body).Decode(&r)
@@ -439,14 +451,10 @@ func writeTaskData(cluster string, data map[string]map[string]nodeData) {
 
 			if task.ParentTaskId == "" {
 				res, err := es.Index(wIndexName, esutil.NewJSONReader(task), es.Index.WithDocumentID(taskId))
-				// res, err := es.Index(wIndexName, esutil.NewJSONReader(vv))
-
 				if err != nil {
 					logger.Println(err)
 					return
 				}
-
-				// io.Copy(io.Discard, res.Body)
 
 				body, _ := io.ReadAll(res.Body)
 				res.Body.Close()
@@ -730,12 +738,16 @@ func main() {
 	})
 
 	r.POST("/retryShard", func(c *gin.Context) {
-		var d []checkSrvData
+		var d struct {
+			Data   []checkSrvData `json:"data"`
+			User   string         `json:"user"`
+			Passwd string         `json:"passwd"`
+		}
 		c.ShouldBindJSON(&d)
 
-		for _, v := range d {
+		for _, v := range d.Data {
 			if checkEsService(v) == 1 {
-				retryFailedShard([]string{fmt.Sprintf("http://%s:%s", v.Host, v.Port)}, true)
+				retryFailedShard([]string{fmt.Sprintf("http://%s:%s", v.Host, v.Port)}, true, d.User, d.Passwd)
 				break
 			}
 		}

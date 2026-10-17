@@ -106,7 +106,11 @@ const serviceView = {
               number: g?._source?.children?.length,
               children:
                 g?._source?.children?.map((c, sindex) => {
-                  this.esClusterData[c.name] = c.data;
+                  this.esClusterData[c.name] = {
+                    data: c.data,
+                    user: c.user,
+                    passwd: c.passwd,
+                  };
 
                   return {
                     name: c.name,
@@ -426,7 +430,7 @@ const serviceView = {
     },
     handleRetryShard() {
       axios
-        .post("/retryShard", this.esClusterData[this.selectEsCluster] || [])
+        .post("/retryShard", this.esClusterData[this.selectEsCluster] || {})
         .then(() =>
           ElMessage({
             showClose: true,
@@ -434,14 +438,13 @@ const serviceView = {
             type: "success",
           })
         )
-        .catch(
-          err >
-            ElMessage({
-              duration: 5000,
-              showClose: true,
-              message: err,
-              type: "error",
-            })
+        .catch((error) =>
+          ElMessage({
+            duration: 5000,
+            showClose: true,
+            message: error.response.data?.message || error,
+            type: "error",
+          })
         );
     },
   },
